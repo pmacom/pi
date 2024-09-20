@@ -13,9 +13,8 @@ show_message() {
     sleep 2
 }
 
-# Function to find the first active USB video device or fall back to the Raspberry Pi ribbon camera
-find_video_device() {
-    # Check for USB cameras (usually /dev/video1 or higher)
+# Function to find the first active USB video device
+find_usb_video_device() {
     for device in /dev/video*; do
         if [[ "$device" != "/dev/video0" ]] && [ -e "$device" ]; then
             # Detect video format and resolution for USB cameras
@@ -34,28 +33,19 @@ find_video_device() {
             return 0
         fi
     done
-    
-    # If no USB cameras are found, check for Raspberry Pi ribbon camera (usually /dev/video0)
-    if [ -e "/dev/video0" ]; then
-        resolution=$(v4l2-ctl --list-formats-ext -d "/dev/video0" | grep -m 1 'Size: Discrete' | awk '{print $3}')
-        format=$(v4l2-ctl --list-formats-ext -d "/dev/video0" | grep -m 1 'Pixel Format' | awk '{print $3}')
-        
-        # Set default values if not detected
-        if [ -z "$resolution" ]; then
-            resolution=$DEFAULT_RESOLUTION
-        fi
-        if [ -z "$format" ]; then
-            format="mjpeg"  # Default to MJPEG if format not detected
-        fi
-        
-        echo "/dev/video0 $resolution $format"
-        return 0
-    fi
-    
-    return 1  # No devices found
+    return 1
 }
 
-# Function to run ffmpeg with the active video device
+# Function to check for Raspberry Pi camera using libcamera
+find_rpi_camera() {
+    if libcamera-vid --list-cameras > /dev/null 2>&1; then
+        echo "rpi-camera $DEFAULT_RESOLUTION h264"
+        return 0
+    fi
+    return 1
+}
+
+# Function to run ffmpeg with the active USB video device
 run_ffmpeg() {
     local device="$1"
     local resolution="$2"
@@ -69,24 +59,47 @@ run_ffmpeg() {
         -f fbdev /dev/fb0
 }
 
-# Main loop to continuously check for active video devices and run ffmpeg when available
+# Function to run libcamera-vid for Raspberry Pi camera
+run_libcamera() {
+    local resolution="$1"
+    
+    libcamera-vid \
+        --framerate "$FRAMERATE" --width ${resolution%x*} --height ${resolution#*x} \
+        --output - | ffmpeg \
+        -f rawvideo -pix_fmt yuv420p -s "$resolution" -i - \
+        -vf "hflip,format=rgb565le" \
+        -pix_fmt rgb565le \
+        -fflags nobuffer -flags low_delay -an \
+        -f fbdev /dev/fb0
+}
+
+# Main loop to continuously check for active video devices and run appropriate video capture when available
 while true; do
-    device_info=$(find_video_device)
+    # First check for USB video devices
+    device_info=$(find_usb_video_device)
+    
     if [ -n "$device_info" ]; then
+        # If USB device is found, use ffmpeg to stream it
         device=$(echo $device_info | awk '{print $1}')
         resolution=$(echo $device_info | awk '{print $2}')
         format=$(echo $device_info | awk '{print $3}')
         
-        echo "Active video device found: $device with resolution $resolution and format $format"
-        
-        # Run ffmpeg and wait for it to finish (i.e., the device is disconnected)
+        echo "Active USB video device found: $device with resolution $resolution and format $format"
         run_ffmpeg "$device" "$resolution" "$format"
-        
-        echo "Device $device disconnected. Restarting detection..."
-        sleep 2  # Give some time before re-detecting devices
     else
-        show_message
+        # If no USB device is found, check for Raspberry Pi camera
+        rpi_camera_info=$(find_rpi_camera)
+        
+        if [ -n "$rpi_camera_info" ]; then
+            # If Raspberry Pi camera is found, use libcamera to stream it
+            resolution=$(echo $rpi_camera_info | awk '{print $2}')
+            echo "Raspberry Pi camera detected with resolution $resolution"
+            run_libcamera "$resolution"
+        else
+            show_message
+        fi
     fi
     
-    sleep 1  # Short delay before checking again
+    echo "No video device detected. Checking again..."
+    sleep 2
 done
