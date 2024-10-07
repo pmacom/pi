@@ -1,4 +1,4 @@
-     #!/bin/bash
+#!/bin/bash
 # init2.sh - Setup script to configure Raspberry Pi Zero as a USB webcam
 
 # Ensure the script is run as root
@@ -19,6 +19,9 @@ apt install -y \
   gstreamer1.0-plugins-good \
   v4l2loopback-dkms \
   linux-modules-extra-raspi
+
+# Add root to video group to address permission issues
+usermod -aG video root
 
 # Load v4l2loopback module with specific options
 modprobe v4l2loopback video_nr=2
@@ -60,17 +63,14 @@ cat << 'EOF' > "$GADGET_SCRIPT"
 # Unbind and remove existing gadget if it exists
 if [ -d /sys/kernel/config/usb_gadget/uvc_gadget ]; then
   echo "Cleaning up existing gadget configuration..."
-  # Unbind the gadget
   if [ -e /sys/kernel/config/usb_gadget/uvc_gadget/UDC ]; then
     echo "" > /sys/kernel/config/usb_gadget/uvc_gadget/UDC
   fi
-  # Unlink functions from configurations
   for function in /sys/kernel/config/usb_gadget/uvc_gadget/configs/*/uvc.usb*; do
     if [ -L "$function" ]; then
       rm "$function"
     fi
   done
-  # Remove the gadget directory
   rm -rf /sys/kernel/config/usb_gadget/uvc_gadget
 fi
 
@@ -103,7 +103,6 @@ echo 120 > configs/c.1/MaxPower
 
 # Create UVC function
 mkdir -p functions/uvc.usb0
-# Configure UVC function (adjust as needed)
 echo 0 > functions/uvc.usb0/streaming_maxpacket
 echo 1 > functions/uvc.usb0/streaming_maxburst
 mkdir -p functions/uvc.usb0/control/header/h
@@ -149,7 +148,7 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/usb_gadget_setup.sh
+ExecStart=sudo /usr/bin/usb_gadget_setup.sh
 RemainAfterExit=yes
 
 [Install]
@@ -206,4 +205,3 @@ if command -v aa-status &> /dev/null; then
 fi
 
 echo "Setup complete. Please reboot the system for changes to take effect."
-
