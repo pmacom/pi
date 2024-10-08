@@ -54,24 +54,12 @@ if ! grep -q "^dtoverlay=dwc2,dr_mode=peripheral" "$CONFIG_FILE"; then
   echo "dtoverlay=dwc2,dr_mode=peripheral" >> "$CONFIG_FILE"
 fi
 
-CONFIG_FILE="/boot/config.txt"  # Update this path if necessary
-# Ensure overlay and UVC-related settings are present
-if ! grep -q "^dtoverlay=dwc2,dr_mode=peripheral" "$CONFIG_FILE"; then
-  log "Adding dtoverlay setting to $CONFIG_FILE..."
-  echo "dtoverlay=dwc2,dr_mode=peripheral" >> "$CONFIG_FILE"
-fi
-if ! grep -q "^dtoverlay=libcomposite" "$CONFIG_FILE"; then
-  log "Adding libcomposite overlay to $CONFIG_FILE..."
-  echo "dtoverlay=libcomposite" >> "$CONFIG_FILE"
-fi
-
 # Configure /boot/cmdline.txt if necessary
 CMDLINE_FILE="/boot/cmdline.txt"
 if ! grep -q "modules-load=dwc2" "$CMDLINE_FILE"; then
   log "Configuring $CMDLINE_FILE..."
   sed -i 's/\(rootwait\)/\1 modules-load=dwc2/' "$CMDLINE_FILE"
 fi
-
 
 # Ensure dwc2 and libcomposite modules load on boot
 if ! grep -q "^dwc2" /etc/modules; then
@@ -248,7 +236,7 @@ if ! lsmod | grep -q v4l2loopback; then
 fi
 
 # Test if v4l2src can initialize (use fakesink to discard output)
-sudo gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
+gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
 if [ $? -ne 0 ]; then
   echo "$(date): GStreamer fakesink test failed. Exiting." | tee -a "$LOG_FILE"
   exit 1
@@ -256,7 +244,7 @@ fi
 
 # If fakesink test passes, continue with autovideosink
 echo "$(date): fakesink test passed. Launching main GStreamer pipeline..." | tee -a "$LOG_FILE"
-sudo gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! autovideosink 2>&1 | tee -a "$LOG_FILE"
+gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! autovideosink 2>&1 | tee -a "$LOG_FILE"
 
 EOF
   chmod +x "$STREAMING_SCRIPT"
