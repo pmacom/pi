@@ -46,7 +46,7 @@ if ! v4l2-ctl --list-devices | grep -q "/dev/video2"; then
 fi
 
 # Test if v4l2src can initialize (use fakesink to discard output)
-gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
+gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,format=YUY2,width=640,height=480 ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
 if [ $? -ne 0 ]; then
   log "GStreamer fakesink test failed. Exiting."
   kill $FFMPEG_PID
@@ -55,7 +55,7 @@ fi
 
 # If fakesink test passes, continue with main GStreamer pipeline
 log "fakesink test passed. Launching main GStreamer pipeline..."
-gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! v4l2sink device=/dev/video0 2>&1 | tee -a "$LOG_FILE"
+gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,format=YUY2,width=640,height=480 ! videoconvert ! v4l2sink device=/dev/video0 2>&1 | tee -a "$LOG_FILE"
 
 # Kill the ffmpeg process when done
 kill $FFMPEG_PID
