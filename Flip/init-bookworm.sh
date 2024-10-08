@@ -1,82 +1,58 @@
 #!/bin/bash
-# init-bookworm.sh - Automated setup script to configure Raspberry Pi Zero as a USB webcam
+# init2.sh - Setup script to configure Raspberry Pi Zero as a USB webcam
 
 # Ensure the script is run as root
 if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root: sudo ./init-bookworm.sh"
+  echo "Please run as root: sudo ./init2.sh"
   exit
 fi
 
-# Log file for tracking progress and errors
-LOG_FILE="/var/log/init-bookworm.log"
-> "$LOG_FILE"
-
-log() {
-  echo "$(date): $1" | tee -a "$LOG_FILE"
-}
-
-log "Starting automated setup..."
+echo "Starting setup..."
 
 # Update the package list and upgrade existing packages
 apt update && apt -y upgrade
 
-# Check if GStreamer is installed
-if ! command -v gst-launch-1.0 &> /dev/null; then
-  log "GStreamer not found. Installing GStreamer..."
-  apt install -y gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-  log "✅ GStreamer installed successfully."
-else
-  log "✅ GStreamer is already installed."
-fi
+# Install necessary packages
+apt install -y \
+  gstreamer1.0-tools \
+  gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good \
+  v4l2loopback-dkms \
+  linux-modules-extra-raspi
 
-# Install v4l2loopback-dkms and force a rebuild
-log "Installing v4l2loopback-dkms and forcing a module rebuild..."
-apt install -y v4l2loopback-dkms
-dpkg-reconfigure v4l2loopback-dkms
-
-# Check if v4l2loopback module loads successfully
-if ! modprobe v4l2loopback video_nr=2 exclusive_caps=1; then
-  log "❌ Failed to load v4l2loopback. Please check for any installation errors."
-else
-  log "✅ v4l2loopback module loaded successfully."
-fi
+# Load v4l2loopback module with specific options
+modprobe v4l2loopback video_nr=2
 
 # Ensure v4l2loopback loads on boot
-if ! grep -q "^v4l2loopback" /etc/modules; then
-  echo "v4l2loopback" >> /etc/modules
-fi
+echo "v4l2loopback" >> /etc/modules
 
-# Configure /boot/config.txt if necessary
-CONFIG_FILE="/boot/config.txt"
+# Modify /boot/firmware/config.txt
+CONFIG_FILE="/boot/firmware/config.txt"
 if ! grep -q "^dtoverlay=dwc2,dr_mode=peripheral" "$CONFIG_FILE"; then
-  log "Configuring $CONFIG_FILE..."
+  echo "Configuring $CONFIG_FILE..."
   echo "dtoverlay=dwc2,dr_mode=peripheral" >> "$CONFIG_FILE"
 fi
 
-# Configure /boot/cmdline.txt if necessary
-CMDLINE_FILE="/boot/cmdline.txt"
+# Modify /boot/firmware/cmdline.txt
+CMDLINE_FILE="/boot/firmware/cmdline.txt"
 if ! grep -q "modules-load=dwc2" "$CMDLINE_FILE"; then
-  log "Configuring $CMDLINE_FILE..."
+  echo "Configuring $CMDLINE_FILE..."
   sed -i 's/\(rootwait\)/\1 modules-load=dwc2/' "$CMDLINE_FILE"
 fi
 
 # Ensure dwc2 and libcomposite modules load on boot
-if ! grep -q "^dwc2" /etc/modules; then
-  echo -e "dwc2\nlibcomposite" >> /etc/modules
-fi
+echo -e "dwc2\nlibcomposite" >> /etc/modules
 
 # Mount configfs if not already mounted
 if ! mountpoint -q /sys/kernel/config; then
-  log "Mounting configfs..."
+  echo "Mounting configfs..."
   mount -t configfs none /sys/kernel/config
-  if ! grep -q "^none /sys/kernel/config configfs" /etc/fstab; then
-    echo "none /sys/kernel/config configfs defaults 0 0" >> /etc/fstab
-  fi
+  echo "none /sys/kernel/config configfs defaults 0 0" >> /etc/fstab
 fi
 
 # Create usb_gadget_setup.sh script
 GADGET_SCRIPT="/usr/bin/usb_gadget_setup.sh"
-log "Creating $GADGET_SCRIPT..."
+echo "Creating $GADGET_SCRIPT..."
 cat << 'EOF' > "$GADGET_SCRIPT"
 #!/bin/bash
 # usb_gadget_setup.sh - Script to configure USB gadget
@@ -84,14 +60,17 @@ cat << 'EOF' > "$GADGET_SCRIPT"
 # Unbind and remove existing gadget if it exists
 if [ -d /sys/kernel/config/usb_gadget/uvc_gadget ]; then
   echo "Cleaning up existing gadget configuration..."
+  # Unbind the gadget
   if [ -e /sys/kernel/config/usb_gadget/uvc_gadget/UDC ]; then
     echo "" > /sys/kernel/config/usb_gadget/uvc_gadget/UDC
   fi
+  # Unlink functions from configurations
   for function in /sys/kernel/config/usb_gadget/uvc_gadget/configs/*/uvc.usb*; do
     if [ -L "$function" ]; then
       rm "$function"
     fi
   done
+  # Remove the gadget directory
   rm -rf /sys/kernel/config/usb_gadget/uvc_gadget
 fi
 
@@ -124,6 +103,7 @@ echo 120 > configs/c.1/MaxPower
 
 # Create UVC function
 mkdir -p functions/uvc.usb0
+# Configure UVC function (adjust as needed)
 echo 0 > functions/uvc.usb0/streaming_maxpacket
 echo 1 > functions/uvc.usb0/streaming_maxburst
 mkdir -p functions/uvc.usb0/control/header/h
@@ -155,11 +135,13 @@ ln -s functions/uvc.usb0 configs/c.1/
 UDC_DEVICE=$(ls /sys/class/udc | head -n 1)
 echo "$UDC_DEVICE" > UDC
 EOF
+
+# Make the gadget setup script executable
 chmod +x "$GADGET_SCRIPT"
 
-# Create and enable usb_gadget.service
+# Create usb_gadget.service
 SERVICE_FILE="/etc/systemd/system/usb_gadget.service"
-log "Creating $SERVICE_FILE..."
+echo "Creating $SERVICE_FILE..."
 cat << EOF > "$SERVICE_FILE"
 [Unit]
 Description=USB Gadget Setup Service
@@ -167,18 +149,20 @@ After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=sudo /usr/bin/usb_gadget_setup.sh
+ExecStart=/usr/bin/usb_gadget_setup.sh
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl daemon-reload
-systemctl enable --now usb_gadget.service
 
-# Create and enable streaming.service
+# Reload systemd daemon and enable the service
+systemctl daemon-reload
+systemctl enable usb_gadget.service
+
+# Create streaming.service
 STREAMING_SERVICE="/etc/systemd/system/streaming.service"
-log "Creating $STREAMING_SERVICE..."
+echo "Creating $STREAMING_SERVICE..."
 cat << EOF > "$STREAMING_SERVICE"
 [Unit]
 Description=Camera Streaming Service
@@ -192,59 +176,34 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl enable --now streaming.service
 
 # Create streaming.sh script
 STREAMING_SCRIPT="/usr/bin/streaming.sh"
-log "Creating $STREAMING_SCRIPT..."
+echo "Creating $STREAMING_SCRIPT..."
 cat << 'EOF' > "$STREAMING_SCRIPT"
 #!/bin/bash
-# streaming.sh - Script to start video streaming with verbose logging
-
-LOG_FILE="/var/log/streaming.log"
-> "$LOG_FILE" # Clear the previous log
-
-echo "$(date): Starting streaming service..." | tee -a "$LOG_FILE"
-
-# Wait for /dev/video2 to become available
-RETRY=5
-while [ ! -e /dev/video2 ] && [ $RETRY -gt 0 ]; do
-  echo "$(date): Waiting for /dev/video2..." | tee -a "$LOG_FILE"
-  sleep 2
-  RETRY=$((RETRY-1))
-done
-
-if [ ! -e /dev/video2 ]; then
-  echo "$(date): /dev/video2 not found after retries. Exiting." | tee -a "$LOG_FILE"
-  exit 1
-fi
-
-echo "$(date): /dev/video2 is available. Starting GStreamer pipeline..." | tee -a "$LOG_FILE"
+# streaming.sh - Script to start video streaming
 
 # Load v4l2loopback module if not already loaded
 if ! lsmod | grep -q v4l2loopback; then
-  echo "$(date): Loading v4l2loopback module..." | tee -a "$LOG_FILE"
-  modprobe v4l2loopback video_nr=2 exclusive_caps=1
+  modprobe v4l2loopback video_nr=2
 fi
 
-# Test if v4l2src can initialize (use fakesink to discard output)
-gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
-if [ $? -ne 0 ]; then
-  echo "$(date): GStreamer fakesink test failed. Exiting." | tee -a "$LOG_FILE"
-  exit 1
-fi
-
-# If fakesink test passes, continue with autovideosink
-echo "$(date): fakesink test passed. Launching main GStreamer pipeline..." | tee -a "$LOG_FILE"
-gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! autovideosink 2>&1 | tee -a "$LOG_FILE"
-
+# Start GStreamer pipeline (adjust as needed)
+gst-launch-1.0 v4l2src ! video/x-raw,width=640,height=480 ! videoconvert ! v4l2sink device=/dev/video2
 EOF
+
+# Make the streaming script executable
 chmod +x "$STREAMING_SCRIPT"
+
+# Enable the streaming service
+systemctl enable streaming.service
 
 # Adjust AppArmor settings if necessary (for Ubuntu)
 if command -v aa-status &> /dev/null; then
-  log "Adjusting AppArmor settings..."
+  echo "Adjusting AppArmor settings..."
   aa-complain /sys/kernel/config/**
 fi
 
-log "Automated setup complete. Services are now running."
+echo "Setup complete. Please reboot the system for changes to take effect."
+
