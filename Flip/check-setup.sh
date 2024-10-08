@@ -50,6 +50,8 @@ if systemctl is-active --quiet usb_gadget.service; then
   echo "✅ usb_gadget.service is active"
 else
   echo "❌ usb_gadget.service is not active"
+  echo "Displaying usb_gadget.service logs:"
+  journalctl -u usb_gadget.service --no-pager | tail -n 10
 fi
 
 # Check if streaming.service is active
@@ -57,6 +59,8 @@ if systemctl is-active --quiet streaming.service; then
   echo "✅ streaming.service is active"
 else
   echo "❌ streaming.service is not active"
+  echo "Displaying streaming.service logs:"
+  journalctl -u streaming.service --no-pager | tail -n 10
 fi
 
 # Check if /dev/video2 is available
