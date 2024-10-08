@@ -34,6 +34,6 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-# If fakesink test passes, continue with autovideosink
+# If fakesink test passes, continue with v4l2sink
 echo "$(date): fakesink test passed. Launching main GStreamer pipeline..." | tee -a "$LOG_FILE"
-gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! autovideosink 2>&1 | tee -a "$LOG_FILE"
+gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! v4l2sink device=/dev/video0 2>&1 | tee -a "$LOG_FILE"

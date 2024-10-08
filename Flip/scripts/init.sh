@@ -18,7 +18,7 @@ log() {
 log "Starting automated setup..."
 
 # Update file contents with the latest from the init directory
-DIR_PATH="./scripts"
+DIR_PATH="./"
 TARGET_PATHS=(
   "/etc/systemd/system/streaming.service"
   "/usr/bin/streaming.sh"
