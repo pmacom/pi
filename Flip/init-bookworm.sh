@@ -1,4 +1,4 @@
-     #!/bin/bash
+#!/bin/bash
 # init2.sh - Setup script to configure Raspberry Pi Zero as a USB webcam
 
 # Ensure the script is run as root
@@ -20,20 +20,27 @@ apt install -y \
   v4l2loopback-dkms \
   linux-modules-extra-raspi
 
+# Add root to video group if not already added
+if ! groups root | grep -q "\bvideo\b"; then
+  usermod -aG video root
+fi
+
 # Load v4l2loopback module with specific options
 modprobe v4l2loopback video_nr=2
 
 # Ensure v4l2loopback loads on boot
-echo "v4l2loopback" >> /etc/modules
+if ! grep -q "^v4l2loopback" /etc/modules; then
+  echo "v4l2loopback" >> /etc/modules
+fi
 
-# Modify /boot/config.txt
+# Modify /boot/config.txt if necessary
 CONFIG_FILE="/boot/config.txt"
 if ! grep -q "^dtoverlay=dwc2,dr_mode=peripheral" "$CONFIG_FILE"; then
   echo "Configuring $CONFIG_FILE..."
   echo "dtoverlay=dwc2,dr_mode=peripheral" >> "$CONFIG_FILE"
 fi
 
-# Modify /boot/cmdline.txt
+# Modify /boot/cmdline.txt if necessary
 CMDLINE_FILE="/boot/cmdline.txt"
 if ! grep -q "modules-load=dwc2" "$CMDLINE_FILE"; then
   echo "Configuring $CMDLINE_FILE..."
@@ -41,36 +48,38 @@ if ! grep -q "modules-load=dwc2" "$CMDLINE_FILE"; then
 fi
 
 # Ensure dwc2 and libcomposite modules load on boot
-echo -e "dwc2\nlibcomposite" >> /etc/modules
+if ! grep -q "^dwc2" /etc/modules; then
+  echo -e "dwc2\nlibcomposite" >> /etc/modules
+fi
 
 # Mount configfs if not already mounted
 if ! mountpoint -q /sys/kernel/config; then
   echo "Mounting configfs..."
   mount -t configfs none /sys/kernel/config
-  echo "none /sys/kernel/config configfs defaults 0 0" >> /etc/fstab
+  if ! grep -q "^none /sys/kernel/config configfs" /etc/fstab; then
+    echo "none /sys/kernel/config configfs defaults 0 0" >> /etc/fstab
+  fi
 fi
 
-# Create usb_gadget_setup.sh script
+# Create usb_gadget_setup.sh script if not already created
 GADGET_SCRIPT="/usr/bin/usb_gadget_setup.sh"
-echo "Creating $GADGET_SCRIPT..."
-cat << 'EOF' > "$GADGET_SCRIPT"
+if [ ! -f "$GADGET_SCRIPT" ]; then
+  echo "Creating $GADGET_SCRIPT..."
+  cat << 'EOF' > "$GADGET_SCRIPT"
 #!/bin/bash
 # usb_gadget_setup.sh - Script to configure USB gadget
 
 # Unbind and remove existing gadget if it exists
 if [ -d /sys/kernel/config/usb_gadget/uvc_gadget ]; then
   echo "Cleaning up existing gadget configuration..."
-  # Unbind the gadget
   if [ -e /sys/kernel/config/usb_gadget/uvc_gadget/UDC ]; then
     echo "" > /sys/kernel/config/usb_gadget/uvc_gadget/UDC
   fi
-  # Unlink functions from configurations
   for function in /sys/kernel/config/usb_gadget/uvc_gadget/configs/*/uvc.usb*; do
     if [ -L "$function" ]; then
       rm "$function"
     fi
   done
-  # Remove the gadget directory
   rm -rf /sys/kernel/config/usb_gadget/uvc_gadget
 fi
 
@@ -103,7 +112,6 @@ echo 120 > configs/c.1/MaxPower
 
 # Create UVC function
 mkdir -p functions/uvc.usb0
-# Configure UVC function (adjust as needed)
 echo 0 > functions/uvc.usb0/streaming_maxpacket
 echo 1 > functions/uvc.usb0/streaming_maxburst
 mkdir -p functions/uvc.usb0/control/header/h
@@ -135,35 +143,35 @@ ln -s functions/uvc.usb0 configs/c.1/
 UDC_DEVICE=$(ls /sys/class/udc | head -n 1)
 echo "$UDC_DEVICE" > UDC
 EOF
+  chmod +x "$GADGET_SCRIPT"
+fi
 
-# Make the gadget setup script executable
-chmod +x "$GADGET_SCRIPT"
-
-# Create usb_gadget.service
+# Create usb_gadget.service if it does not exist
 SERVICE_FILE="/etc/systemd/system/usb_gadget.service"
-echo "Creating $SERVICE_FILE..."
-cat << EOF > "$SERVICE_FILE"
+if [ ! -f "$SERVICE_FILE" ]; then
+  echo "Creating $SERVICE_FILE..."
+  cat << EOF > "$SERVICE_FILE"
 [Unit]
 Description=USB Gadget Setup Service
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/usb_gadget_setup.sh
+ExecStart=sudo /usr/bin/usb_gadget_setup.sh
 RemainAfterExit=yes
 
 [Install]
 WantedBy=multi-user.target
 EOF
+  systemctl daemon-reload
+  systemctl enable usb_gadget.service
+fi
 
-# Reload systemd daemon and enable the service
-systemctl daemon-reload
-systemctl enable usb_gadget.service
-
-# Create streaming.service
+# Create streaming.service if it does not exist
 STREAMING_SERVICE="/etc/systemd/system/streaming.service"
-echo "Creating $STREAMING_SERVICE..."
-cat << EOF > "$STREAMING_SERVICE"
+if [ ! -f "$STREAMING_SERVICE" ]; then
+  echo "Creating $STREAMING_SERVICE..."
+  cat << EOF > "$STREAMING_SERVICE"
 [Unit]
 Description=Camera Streaming Service
 After=usb_gadget.service
@@ -176,11 +184,14 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
+  systemctl enable streaming.service
+fi
 
-# Create streaming.sh script
+# Create streaming.sh script if it does not exist
 STREAMING_SCRIPT="/usr/bin/streaming.sh"
-echo "Creating $STREAMING_SCRIPT..."
-cat << 'EOF' > "$STREAMING_SCRIPT"
+if [ ! -f "$STREAMING_SCRIPT" ]; then
+  echo "Creating $STREAMING_SCRIPT..."
+  cat << 'EOF' > "$STREAMING_SCRIPT"
 #!/bin/bash
 # streaming.sh - Script to start video streaming
 
@@ -192,12 +203,8 @@ fi
 # Start GStreamer pipeline (adjust as needed)
 gst-launch-1.0 v4l2src ! video/x-raw,width=640,height=480 ! videoconvert ! v4l2sink device=/dev/video2
 EOF
-
-# Make the streaming script executable
-chmod +x "$STREAMING_SCRIPT"
-
-# Enable the streaming service
-systemctl enable streaming.service
+  chmod +x "$STREAMING_SCRIPT"
+fi
 
 # Adjust AppArmor settings if necessary (for Ubuntu)
 if command -v aa-status &> /dev/null; then
@@ -206,4 +213,3 @@ if command -v aa-status &> /dev/null; then
 fi
 
 echo "Setup complete. Please reboot the system for changes to take effect."
-
