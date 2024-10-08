@@ -26,15 +26,15 @@ modprobe v4l2loopback video_nr=2
 # Ensure v4l2loopback loads on boot
 echo "v4l2loopback" >> /etc/modules
 
-# Modify /boot/firmware/config.txt
-CONFIG_FILE="/boot/firmware/config.txt"
+# Modify /boot/config.txt
+CONFIG_FILE="/boot/config.txt"
 if ! grep -q "^dtoverlay=dwc2,dr_mode=peripheral" "$CONFIG_FILE"; then
   echo "Configuring $CONFIG_FILE..."
   echo "dtoverlay=dwc2,dr_mode=peripheral" >> "$CONFIG_FILE"
 fi
 
-# Modify /boot/firmware/cmdline.txt
-CMDLINE_FILE="/boot/firmware/cmdline.txt"
+# Modify /boot/cmdline.txt
+CMDLINE_FILE="/boot/cmdline.txt"
 if ! grep -q "modules-load=dwc2" "$CMDLINE_FILE"; then
   echo "Configuring $CMDLINE_FILE..."
   sed -i 's/\(rootwait\)/\1 modules-load=dwc2/' "$CMDLINE_FILE"
