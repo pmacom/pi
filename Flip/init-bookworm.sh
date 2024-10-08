@@ -7,54 +7,38 @@ if [ "$EUID" -ne 0 ]; then
   exit
 fi
 
-echo "Starting automated setup..."
-
-# Log file
+# Log file for tracking progress and errors
 LOG_FILE="/var/log/init-bookworm.log"
 > "$LOG_FILE"
 
-# Log function
 log() {
   echo "$(date): $1" | tee -a "$LOG_FILE"
 }
 
+log "Starting automated setup..."
+
+# Update the package list and upgrade existing packages
+apt update && apt -y upgrade
+
 # Check if GStreamer is installed
 if ! command -v gst-launch-1.0 &> /dev/null; then
   log "GStreamer not found. Installing GStreamer..."
-  apt update
   apt install -y gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good
   log "✅ GStreamer installed successfully."
 else
   log "✅ GStreamer is already installed."
 fi
 
-# Update the package list and upgrade existing packages
-apt update && apt -y upgrade
+# Install v4l2loopback-dkms and force a rebuild
+log "Installing v4l2loopback-dkms and forcing a module rebuild..."
+apt install -y v4l2loopback-dkms
+dpkg-reconfigure v4l2loopback-dkms
 
-# Install necessary packages, including v4l2loopback-dkms
-apt install -y \
-  gstreamer1.0-tools \
-  gstreamer1.0-plugins-base \
-  gstreamer1.0-plugins-good \
-  v4l2loopback-dkms \
-  linux-modules-extra-raspi
-
-# Add root to video group if not already added
-if ! groups root | grep -q "\bvideo\b"; then
-  usermod -aG video root
-fi
-
-# Attempt to load the v4l2loopback module with specific options
-if ! lsmod | grep -q v4l2loopback; then
-  log "Loading v4l2loopback module..."
-  modprobe v4l2loopback video_nr=2 exclusive_caps=1
-  if ! lsmod | grep -q v4l2loopback; then
-    log "❌ Failed to load v4l2loopback. Please ensure it’s properly installed."
-  else
-    log "✅ v4l2loopback module loaded successfully."
-  fi
+# Check if v4l2loopback module loads successfully
+if ! modprobe v4l2loopback video_nr=2 exclusive_caps=1; then
+  log "❌ Failed to load v4l2loopback. Please check for any installation errors."
 else
-  log "✅ v4l2loopback module is already loaded."
+  log "✅ v4l2loopback module loaded successfully."
 fi
 
 # Ensure v4l2loopback loads on boot
@@ -62,14 +46,14 @@ if ! grep -q "^v4l2loopback" /etc/modules; then
   echo "v4l2loopback" >> /etc/modules
 fi
 
-# Modify /boot/config.txt if necessary
+# Configure /boot/config.txt if necessary
 CONFIG_FILE="/boot/config.txt"
 if ! grep -q "^dtoverlay=dwc2,dr_mode=peripheral" "$CONFIG_FILE"; then
   log "Configuring $CONFIG_FILE..."
   echo "dtoverlay=dwc2,dr_mode=peripheral" >> "$CONFIG_FILE"
 fi
 
-# Modify /boot/cmdline.txt if necessary
+# Configure /boot/cmdline.txt if necessary
 CMDLINE_FILE="/boot/cmdline.txt"
 if ! grep -q "modules-load=dwc2" "$CMDLINE_FILE"; then
   log "Configuring $CMDLINE_FILE..."
@@ -175,7 +159,7 @@ EOF
   chmod +x "$GADGET_SCRIPT"
 fi
 
-# Create and start usb_gadget.service if it does not exist
+# Create and enable usb_gadget.service
 SERVICE_FILE="/etc/systemd/system/usb_gadget.service"
 if [ ! -f "$SERVICE_FILE" ]; then
   log "Creating $SERVICE_FILE..."
@@ -196,7 +180,7 @@ EOF
   systemctl enable --now usb_gadget.service
 fi
 
-# Create and start streaming.service if it does not exist
+# Create and enable streaming.service
 STREAMING_SERVICE="/etc/systemd/system/streaming.service"
 if [ ! -f "$STREAMING_SERVICE" ]; then
   log "Creating $STREAMING_SERVICE..."
@@ -216,7 +200,7 @@ EOF
   systemctl enable --now streaming.service
 fi
 
-# Create streaming.sh script if it does not exist
+# Create streaming.sh script if not already created
 STREAMING_SCRIPT="/usr/bin/streaming.sh"
 if [ ! -f "$STREAMING_SCRIPT" ]; then
   log "Creating $STREAMING_SCRIPT..."
