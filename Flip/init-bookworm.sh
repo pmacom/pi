@@ -74,11 +74,10 @@ if ! mountpoint -q /sys/kernel/config; then
   fi
 fi
 
-# Create usb_gadget_setup.sh script if not already created
+# Create usb_gadget_setup.sh script
 GADGET_SCRIPT="/usr/bin/usb_gadget_setup.sh"
-if [ ! -f "$GADGET_SCRIPT" ]; then
-  log "Creating $GADGET_SCRIPT..."
-  cat << 'EOF' > "$GADGET_SCRIPT"
+log "Creating $GADGET_SCRIPT..."
+cat << 'EOF' > "$GADGET_SCRIPT"
 #!/bin/bash
 # usb_gadget_setup.sh - Script to configure USB gadget
 
@@ -156,14 +155,12 @@ ln -s functions/uvc.usb0 configs/c.1/
 UDC_DEVICE=$(ls /sys/class/udc | head -n 1)
 echo "$UDC_DEVICE" > UDC
 EOF
-  chmod +x "$GADGET_SCRIPT"
-fi
+chmod +x "$GADGET_SCRIPT"
 
 # Create and enable usb_gadget.service
 SERVICE_FILE="/etc/systemd/system/usb_gadget.service"
-if [ ! -f "$SERVICE_FILE" ]; then
-  log "Creating $SERVICE_FILE..."
-  cat << EOF > "$SERVICE_FILE"
+log "Creating $SERVICE_FILE..."
+cat << EOF > "$SERVICE_FILE"
 [Unit]
 Description=USB Gadget Setup Service
 After=network.target
@@ -176,15 +173,13 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl daemon-reload
-  systemctl enable --now usb_gadget.service
-fi
+systemctl daemon-reload
+systemctl enable --now usb_gadget.service
 
 # Create and enable streaming.service
 STREAMING_SERVICE="/etc/systemd/system/streaming.service"
-if [ ! -f "$STREAMING_SERVICE" ]; then
-  log "Creating $STREAMING_SERVICE..."
-  cat << EOF > "$STREAMING_SERVICE"
+log "Creating $STREAMING_SERVICE..."
+cat << EOF > "$STREAMING_SERVICE"
 [Unit]
 Description=Camera Streaming Service
 After=usb_gadget.service
@@ -197,27 +192,54 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl enable --now streaming.service
+systemctl enable --now streaming.service
+
+# Create streaming.sh script
+STREAMING_SCRIPT="/usr/bin/streaming.sh"
+log "Creating $STREAMING_SCRIPT..."
+cat << 'EOF' > "$STREAMING_SCRIPT"
+#!/bin/bash
+# streaming.sh - Script to start video streaming with verbose logging
+
+LOG_FILE="/var/log/streaming.log"
+> "$LOG_FILE" # Clear the previous log
+
+echo "$(date): Starting streaming service..." | tee -a "$LOG_FILE"
+
+# Wait for /dev/video2 to become available
+RETRY=5
+while [ ! -e /dev/video2 ] && [ $RETRY -gt 0 ]; do
+  echo "$(date): Waiting for /dev/video2..." | tee -a "$LOG_FILE"
+  sleep 2
+  RETRY=$((RETRY-1))
+done
+
+if [ ! -e /dev/video2 ]; then
+  echo "$(date): /dev/video2 not found after retries. Exiting." | tee -a "$LOG_FILE"
+  exit 1
 fi
 
-# Create streaming.sh script if not already created
-STREAMING_SCRIPT="/usr/bin/streaming.sh"
-if [ ! -f "$STREAMING_SCRIPT" ]; then
-  log "Creating $STREAMING_SCRIPT..."
-  cat << 'EOF' > "$STREAMING_SCRIPT"
-#!/bin/bash
-# streaming.sh - Script to start video streaming
+echo "$(date): /dev/video2 is available. Starting GStreamer pipeline..." | tee -a "$LOG_FILE"
 
 # Load v4l2loopback module if not already loaded
 if ! lsmod | grep -q v4l2loopback; then
+  echo "$(date): Loading v4l2loopback module..." | tee -a "$LOG_FILE"
   modprobe v4l2loopback video_nr=2 exclusive_caps=1
 fi
 
-# Start GStreamer pipeline
-gst-launch-1.0 v4l2src ! video/x-raw,width=640,height=480 ! videoconvert ! autovideosink
-EOF
-  chmod +x "$STREAMING_SCRIPT"
+# Test if v4l2src can initialize (use fakesink to discard output)
+gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
+if [ $? -ne 0 ]; then
+  echo "$(date): GStreamer fakesink test failed. Exiting." | tee -a "$LOG_FILE"
+  exit 1
 fi
+
+# If fakesink test passes, continue with autovideosink
+echo "$(date): fakesink test passed. Launching main GStreamer pipeline..." | tee -a "$LOG_FILE"
+gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! autovideosink 2>&1 | tee -a "$LOG_FILE"
+
+EOF
+chmod +x "$STREAMING_SCRIPT"
 
 # Adjust AppArmor settings if necessary (for Ubuntu)
 if command -v aa-status &> /dev/null; then
