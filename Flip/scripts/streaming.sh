@@ -27,6 +27,12 @@ if ! lsmod | grep -q v4l2loopback; then
   modprobe v4l2loopback video_nr=2 exclusive_caps=1
 fi
 
+# Verify /dev/video2 is a valid capture device
+if ! v4l2-ctl --list-devices | grep -q "/dev/video2"; then
+  echo "$(date): /dev/video2 is not a valid capture device. Exiting." | tee -a "$LOG_FILE"
+  exit 1
+fi
+
 # Test if v4l2src can initialize (use fakesink to discard output)
 gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,width=640,height=480 ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
 if [ $? -ne 0 ]; then

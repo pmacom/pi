@@ -60,6 +60,14 @@ log "Installing and configuring v4l2loopback-dkms..."
 apt install -y v4l2loopback-dkms
 dpkg-reconfigure v4l2loopback-dkms
 
+# Ensure v4l2loopback module loads with correct parameters
+log "Loading v4l2loopback module with correct parameters..."
+if ! modprobe v4l2loopback video_nr=2 exclusive_caps=1; then
+  log "❌ Failed to load v4l2loopback with correct parameters."
+else
+  log "✅ v4l2loopback module loaded with correct parameters."
+fi
+
 # Check if v4l2loopback module loads successfully
 log "Attempting to load v4l2loopback module..."
 if ! modprobe v4l2loopback video_nr=2 exclusive_caps=1; then
