@@ -10,6 +10,17 @@ log() {
 
 log "Starting streaming service..."
 
+# Check if the device exists and has the correct permissions
+if [ ! -e /dev/video2 ]; then
+  log "/dev/video2 does not exist. Exiting."
+  exit 1
+fi
+
+if [ ! -r /dev/video2 ] || [ ! -w /dev/video2 ]; then
+  log "Insufficient permissions for /dev/video2. Exiting."
+  exit 1
+fi
+
 # Wait for /dev/video2 to become available
 RETRY=5
 while [ ! -e /dev/video2 ] && [ $RETRY -gt 0 ]; do
@@ -18,11 +29,7 @@ while [ ! -e /dev/video2 ] && [ $RETRY -gt 0 ]; do
   RETRY=$((RETRY-1))
 done
 
-if [ ! -e /dev/video2 ]; then
-  log "/dev/video2 not found after retries. Exiting."
-  exit 1
-fi
-
+# Remove the redundant check for /dev/video2
 log "/dev/video2 is available. Starting ffmpeg test video stream..."
 ffmpeg -re -f lavfi -i testsrc=size=640x480:rate=30 -vf format=yuv420p -f v4l2 /dev/video2 &
 
