@@ -11,19 +11,19 @@ log() {
 log "Starting streaming service..."
 
 # Check if the device exists and has the correct permissions
-if [ ! -e /dev/video2 ]; then
+if [ ! -e "/dev/video2" ]; then
   log "/dev/video2 does not exist. Exiting."
   exit 1
 fi
 
-if [ ! -r /dev/video2 ] || [ ! -w /dev/video2 ]; then
+if [ ! -r "/dev/video2" ] || [ ! -w "/dev/video2" ]; then
   log "Insufficient permissions for /dev/video2. Exiting."
   exit 1
 fi
 
 # Wait for /dev/video2 to become available
 RETRY=5
-while [ ! -e /dev/video2 ] && [ $RETRY -gt 0 ]; do
+while [ ! -e "/dev/video2" ] && [ $RETRY -gt 0 ]; do
   log "Waiting for /dev/video2..."
   sleep 2
   RETRY=$((RETRY-1))
@@ -31,7 +31,7 @@ done
 
 # Remove the redundant check for /dev/video2
 log "/dev/video2 is available. Starting ffmpeg test video stream..."
-ffmpeg -re -f lavfi -i testsrc=size=640x480:rate=30 -vf format=yuv420p -f v4l2 /dev/video2 &
+ffmpeg -re -f lavfi -i "testsrc=size=1024x768:rate=30" -vf "format=yuv420p" -f v4l2 "/dev/video2" &
 
 # Capture the ffmpeg process ID to manage it later
 FFMPEG_PID=$!
@@ -40,7 +40,7 @@ FFMPEG_PID=$!
 sleep 2
 
 # Load v4l2loopback module if not already loaded
-if ! lsmod | grep -q v4l2loopback; then
+if ! lsmod | grep -q "v4l2loopback"; then
   log "Loading v4l2loopback module..."
   modprobe v4l2loopback video_nr=2 exclusive_caps=1
 fi
@@ -53,7 +53,7 @@ if ! v4l2-ctl --list-devices | grep -q "/dev/video2"; then
 fi
 
 # Test if v4l2src can initialize (use fakesink to discard output)
-gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,format=YUY2,width=640,height=480 ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
+gst-launch-1.0 -v v4l2src device="/dev/video2" ! "video/x-raw,format=YUY2,width=1024,height=768" ! videoconvert ! fakesink 2>&1 | tee -a "$LOG_FILE"
 if [ $? -ne 0 ]; then
   log "GStreamer fakesink test failed. Exiting."
   kill $FFMPEG_PID
@@ -62,7 +62,7 @@ fi
 
 # If fakesink test passes, continue with main GStreamer pipeline
 log "fakesink test passed. Launching main GStreamer pipeline..."
-gst-launch-1.0 -v v4l2src device=/dev/video2 ! video/x-raw,format=YUY2,width=640,height=480 ! videoconvert ! v4l2sink device=/dev/video0 2>&1 | tee -a "$LOG_FILE"
+gst-launch-1.0 -v v4l2src device="/dev/video2" ! "video/x-raw,format=YUY2,width=1024,height=768" ! videoconvert ! v4l2sink device="/dev/video0" 2>&1 | tee -a "$LOG_FILE"
 
 # Kill the ffmpeg process when done
 kill $FFMPEG_PID
