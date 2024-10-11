@@ -1,18 +1,41 @@
 #!/bin/bash
+set -e  # Exit on error
 set -x  # Enable debugging
 
-# USB gadget setup script for both DisplayLink and UVC camera functions
+LOG_FILE="/var/log/usb_gadget_setup.log"
+
+log() {
+    echo "$(date): $1" | tee -a "$LOG_FILE"
+}
+
+# Function to check if a kernel module is loaded
+check_module() {
+    if ! lsmod | grep -q "$1"; then
+        log "Loading kernel module $1..."
+        modprobe "$1" || { log "Failed to load $1"; exit 1; }
+    else
+        log "Kernel module $1 is already loaded."
+    fi
+}
+
+# Check and load necessary kernel modules
+check_module "libcomposite"
+check_module "dwc2"
 
 # Clean up existing configuration
 if [ -d /sys/kernel/config/usb_gadget/dual_gadget ]; then
-  echo "" > /sys/kernel/config/usb_gadget/dual_gadget/UDC
-  sleep 1  # Allow time for unbinding
-  rm -rf /sys/kernel/config/usb_gadget/dual_gadget
+    log "Cleaning up existing gadget configuration..."
+    if [ -e /sys/kernel/config/usb_gadget/dual_gadget/UDC ]; then
+        echo "" > /sys/kernel/config/usb_gadget/dual_gadget/UDC
+    fi
+    sleep 2  # Allow time for unbinding
+    rm -rf /sys/kernel/config/usb_gadget/dual_gadget
 fi
 
 # Set up new gadget configuration
+log "Setting up new USB gadget configuration..."
 mkdir -p /sys/kernel/config/usb_gadget/dual_gadget
-cd /sys/kernel/config/usb_gadget/dual_gadget
+cd /sys/kernel/config/usb_gadget/dual_gadget || { log "Failed to change directory"; exit 1; }
 
 # Set Vendor and Product ID
 echo 0x1d6b > idVendor  # Linux Foundation
@@ -30,7 +53,6 @@ echo "Pi USB Display and Camera" > strings/0x409/product
 
 # Add DisplayLink function (Framebuffer for USB display)
 mkdir -p functions/ffs.usb0
-# Link framebuffer config (requires additional steps, see below)
 
 # Add UVC camera function
 mkdir -p functions/uvc.usb0/streaming/uncompressed/u/1
@@ -48,9 +70,16 @@ echo "Dual Function" > configs/c.1/strings/0x409/configuration
 echo 120 > configs/c.1/MaxPower
 
 # Link the functions to the configuration
-ln -s functions/ffs.usb0 configs/c.1/  # DisplayLink
-ln -s functions/uvc.usb0 configs/c.1/  # UVC Camera
+ln -s functions/ffs.usb0 configs/c.1/ || log "Failed to link DisplayLink function"
+ln -s functions/uvc.usb0 configs/c.1/ || log "Failed to link UVC Camera function"
 
 # Bind the gadget
 UDC_DEVICE=$(ls /sys/class/udc | head -n 1)
-echo "$UDC_DEVICE" > UDC
+if [ -z "$UDC_DEVICE" ]; then
+    log "No UDC device found. Exiting."
+    exit 1
+fi
+log "Using UDC device: $UDC_DEVICE"
+echo "$UDC_DEVICE" > UDC || { log "Failed to bind gadget to UDC"; exit 1; }
+
+log "USB gadget setup completed successfully."

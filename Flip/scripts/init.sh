@@ -1,138 +1,80 @@
 #!/bin/bash
-# init-bookworm.sh - Automated setup script to configure Raspberry Pi Zero as a USB webcam
+set -e  # Exit on error
+
+LOG_FILE="/var/log/init.log"
+
+log() {
+    echo "$(date): $1" | tee -a "$LOG_FILE"
+}
 
 # Ensure the script is run as root
 if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root: sudo ./init-bookworm.sh"
-  exit
+    log "Please run as root: sudo ./init.sh"
+    exit 1
 fi
-
-# Log file for tracking progress and errors
-LOG_FILE="/var/log/init-bookworm.log"
-> "$LOG_FILE"
-
-log() {
-  echo "$(date): $1" | tee -a "$LOG_FILE"
-}
 
 log "Starting automated setup..."
 
-# Update file contents with the latest from the init directory
+# Function to safely update files
+update_file() {
+    local source_file="$1"
+    local target_file="$2"
+    
+    if [ -f "$source_file" ]; then
+        log "Updating $target_file with $source_file..."
+        cat "$source_file" > "$target_file" || { log "Failed to update $target_file"; exit 1; }
+        chmod +x "$target_file" 2>/dev/null || true
+    else
+        log "Warning: $source_file not found; skipping."
+    fi
+}
+
+# Update configuration files
 DIR_PATH="./"
-TARGET_PATHS=(
-  "/etc/systemd/system/streaming.service"
-  "/usr/bin/streaming.sh"
-  "/usr/bin/usb_gadget_setup.sh"
-  "/etc/systemd/system/usb_gadget.service"
+declare -A files=(
+    ["streaming.service"]="/etc/systemd/system/streaming.service"
+    ["streaming.sh"]="/usr/bin/streaming.sh"
+    ["usb_gadget_setup.sh"]="/usr/bin/usb_gadget_setup.sh"
+    ["usb_gadget.service"]="/etc/systemd/system/usb_gadget.service"
 )
 
-SOURCE_FILES=("streaming.service" "streaming.sh" "usb_gadget_setup.sh" "usb_gadget.service")
-
-for i in "${!SOURCE_FILES[@]}"; do
-  SOURCE_FILE="$DIR_PATH/${SOURCE_FILES[i]}"
-  TARGET_FILE="${TARGET_PATHS[i]}"
-  
-  if [ -f "$SOURCE_FILE" ]; then
-    log "Replacing contents of $TARGET_FILE with $SOURCE_FILE..."
-    cat "$SOURCE_FILE" > "$TARGET_FILE"
-    chmod +x "$TARGET_FILE" # Set execute permission if needed
-  else
-    log "Warning: $SOURCE_FILE not found; skipping."
-  fi
+for source_file in "${!files[@]}"; do
+    update_file "$DIR_PATH$source_file" "${files[$source_file]}"
 done
 
-log "Replacement of files complete. Proceeding with setup..."
+log "File updates complete. Proceeding with system configuration..."
 
-# Update the package list and upgrade existing packages
-apt update && apt -y upgrade
+# Update and upgrade system packages
+log "Updating system packages..."
+apt update && apt -y upgrade || { log "Failed to update system packages"; exit 1; }
 
-# Check for and install necessary kernel headers
-log "Checking for Raspberry Pi kernel headers..."
-if ! dpkg -s raspberrypi-kernel-headers &> /dev/null; then
-  log "Kernel headers not found. Installing headers..."
-  apt install -y raspberrypi-kernel-headers
-else
-  log "Kernel headers are already installed."
-fi
+# Install and configure kernel headers and v4l2loopback
+log "Installing and configuring kernel headers and v4l2loopback..."
+apt install -y raspberrypi-kernel-headers v4l2loopback-dkms || { log "Failed to install packages"; exit 1; }
+dpkg-reconfigure v4l2loopback-dkms || { log "Failed to reconfigure v4l2loopback-dkms"; exit 1; }
 
-# Install and reconfigure v4l2loopback-dkms
-log "Installing and configuring v4l2loopback-dkms..."
-apt install -y v4l2loopback-dkms
-dpkg-reconfigure v4l2loopback-dkms
+# Load v4l2loopback module
+log "Loading v4l2loopback module..."
+modprobe v4l2loopback video_nr=2 exclusive_caps=1 || { log "Failed to load v4l2loopback module"; exit 1; }
 
-# Check if v4l2loopback module loads successfully
-log "Attempting to load v4l2loopback module..."
-if ! modprobe v4l2loopback video_nr=2 exclusive_caps=1; then
-  log "❌ Failed to load v4l2loopback. Please check for any installation errors."
-else
-  log "✅ v4l2loopback module loaded successfully."
-fi
+# Ensure modules load on boot
+log "Configuring modules to load on boot..."
+echo -e "v4l2loopback\ndwc2\nlibcomposite" >> /etc/modules
 
-# Ensure v4l2loopback loads on boot
-if ! grep -q "^v4l2loopback" /etc/modules; then
-  echo "v4l2loopback" >> /etc/modules
-fi
+# Configure boot files
+log "Configuring boot files..."
+echo "dtoverlay=dwc2,dr_mode=peripheral" >> /boot/config.txt
+sed -i 's/$/ modules-load=dwc2/' /boot/cmdline.txt
 
-# Configure /boot/config.txt if necessary
-CONFIG_FILE="/boot/config.txt"
-if ! grep -q "^dtoverlay=dwc2,dr_mode=peripheral" "$CONFIG_FILE"; then
-  log "Configuring $CONFIG_FILE..."
-  echo "dtoverlay=dwc2,dr_mode=peripheral" >> "$CONFIG_FILE"
-fi
+# Mount configfs
+log "Mounting configfs..."
+mount -t configfs none /sys/kernel/config || { log "Failed to mount configfs"; exit 1; }
+echo "none /sys/kernel/config configfs defaults 0 0" >> /etc/fstab
 
-# Configure /boot/cmdline.txt if necessary
-CMDLINE_FILE="/boot/cmdline.txt"
-if ! grep -q "modules-load=dwc2" "$CMDLINE_FILE"; then
-  log "Configuring $CMDLINE_FILE..."
-  sed -i 's/\(rootwait\)/\1 modules-load=dwc2/' "$CMDLINE_FILE"
-fi
-
-# Ensure dwc2 and libcomposite modules load on boot
-if ! grep -q "^dwc2" /etc/modules; then
-  echo -e "dwc2\nlibcomposite" >> /etc/modules
-fi
-
-# Mount configfs if not already mounted
-if ! mountpoint -q /sys/kernel/config; then
-  log "Mounting configfs..."
-  mount -t configfs none /sys/kernel/config
-  if ! grep -q "^none /sys/kernel/config configfs" /etc/fstab; then
-    echo "none /sys/kernel/config configfs defaults 0 0" >> /etc/fstab
-  fi
-fi
-
-# Check for usb_gadget_setup.sh script and recreate if missing
-GADGET_SCRIPT="/usr/bin/usb_gadget_setup.sh"
-if [ ! -f "$GADGET_SCRIPT" ]; then
-  log "Creating $GADGET_SCRIPT..."
-  cat << 'EOF' > "$GADGET_SCRIPT"
-#!/bin/bash
-# usb_gadget_setup.sh - Script to configure USB gadget
-
-# Unbind and remove existing gadget if it exists
-if [ -d /sys/kernel/config/usb_gadget/uvc_gadget ]; then
-  echo "Cleaning up existing gadget configuration..."
-  if [ -e /sys/kernel/config/usb_gadget/uvc_gadget/UDC ]; then
-    echo "" > /sys/kernel/config/usb_gadget/uvc_gadget/UDC
-  fi
-  rm -rf /sys/kernel/config/usb_gadget/uvc_gadget
-fi
-
-# Set up gadget directory
-modprobe libcomposite
-mkdir -p /sys/kernel/config/usb_gadget/uvc_gadget
-cd /sys/kernel/config/usb_gadget/uvc_gadget
-
-# Device configuration commands here...
-EOF
-  chmod +x "$GADGET_SCRIPT"
-fi
-
-# Ensure usb_gadget.service is enabled
+# Enable and start services
+log "Enabling and starting services..."
 systemctl daemon-reload
-systemctl enable --now usb_gadget.service
+systemctl enable --now usb_gadget.service || { log "Failed to enable usb_gadget service"; exit 1; }
+systemctl enable --now streaming.service || { log "Failed to enable streaming service"; exit 1; }
 
-# Ensure streaming.service is enabled
-systemctl enable --now streaming.service
-
-log "Automated setup complete. Please reboot to apply changes."
+log "Automated setup complete. Please reboot to apply all changes."

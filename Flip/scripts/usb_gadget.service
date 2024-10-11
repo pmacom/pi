@@ -1,10 +1,12 @@
 [Unit]
 Description=USB Gadget Setup Service
 After=network.target
+Requires=sys-kernel-config.mount
 
 [Service]
 Type=oneshot
-ExecStart=sudo /usr/bin/usb_gadget_setup.sh
+ExecStart=/usr/bin/usb_gadget_setup.sh
+ExecStop=/bin/bash -c 'echo "" > /sys/kernel/config/usb_gadget/dual_gadget/UDC'
 RemainAfterExit=yes
 
 [Install]
