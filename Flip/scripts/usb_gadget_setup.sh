@@ -6,6 +6,7 @@ set -x  # Enable debugging
 # Clean up existing configuration
 if [ -d /sys/kernel/config/usb_gadget/dual_gadget ]; then
   echo "" > /sys/kernel/config/usb_gadget/dual_gadget/UDC
+  sleep 1  # Allow time for unbinding
   rm -rf /sys/kernel/config/usb_gadget/dual_gadget
 fi
 
