@@ -1,0 +1,25 @@
+
+
+Thought for 18 seconds
+
+Analyzing the Video Devices and Resolving the Issue
+
+Thank you for providing the output of v4l2-ctl --list-devices. This information is crucial in identifying the correct video devices for your GStreamer pipeline.
+
+Understanding the Output
+From your output, we have the following video devices:
+
+UVC Gadget Device:
+
+javascript
+Copy code
+3f980000.usb (gadget.0):
+    /dev/video2
+Camera Devices:
+
+bash
+Copy code
+unicam (platform:3f801000.csi):
+    /dev/video0
+    /dev/video1
+    /dev/media3

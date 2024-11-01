@@ -155,6 +155,7 @@ ln -s functions/uvc.usb0 configs/c.1/
 
 # Bind the gadget
 UDC_DEVICE=$(ls /sys/class/udc | head -n 1)
+sleep 2
 echo "$UDC_DEVICE" > UDC
 EOF
   chmod +x "$GADGET_SCRIPT"

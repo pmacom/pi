@@ -1,0 +1,10 @@
+sudo apt install cmake -y
+cd ~
+mkdir Flip
+cd Flip
+git clone https://github.com/tasanakorn/rpi-fbcp
+cd rpi-fbcp
+mkdir build
+cd build
+cmake ..
+make

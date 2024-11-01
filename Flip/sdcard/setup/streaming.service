@@ -1,0 +1,11 @@
+[Unit]
+Description=Camera Streaming Service
+After=usb_gadget.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/streaming.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,135 @@
+three@leonardo:~/pi/hub/Flip/november $ grep CONFIG_USB_DWC2 /boot/config-$(uname -r)
+grep: /boot/config-6.1.21-v7+: No such file or directory
+
+three@leonardo:~/pi/hub/Flip/november $ zcat /proc/config.gz | grep CONFIG_USB_DWC2
+gzip: /proc/config.gz: No such file or directory
+
+three@leonardo:~/pi/hub/Flip/november $ sudo find /lib/modules/$(uname -r) -name 'dwc2.*'
+/lib/modules/6.1.21-v7+/kernel/drivers/usb/dwc2/dwc2.ko.xz
+
+three@leonardo:~/pi/hub/Flip/november $ modinfo dwc2
+filename:       /lib/modules/6.1.21-v7+/kernel/drivers/usb/dwc2/dwc2.ko.xz
+license:        Dual BSD/GPL
+author:         Synopsys, Inc.
+description:    DESIGNWARE HS OTG Core
+srcversion:     448B02D5DC866D41D8D6B6D
+alias:          of:N*T*Cintel,socfpga-agilex-hsotgC*
+alias:          of:N*T*Cintel,socfpga-agilex-hsotg
+alias:          of:N*T*Cst,stm32mp15-hsotgC*
+alias:          of:N*T*Cst,stm32mp15-hsotg
+alias:          of:N*T*Cst,stm32mp15-fsotgC*
+alias:          of:N*T*Cst,stm32mp15-fsotg
+alias:          of:N*T*Cst,stm32f7-hsotgC*
+alias:          of:N*T*Cst,stm32f7-hsotg
+alias:          of:N*T*Cst,stm32f4x9-hsotgC*
+alias:          of:N*T*Cst,stm32f4x9-hsotg
+alias:          of:N*T*Cst,stm32f4x9-fsotgC*
+alias:          of:N*T*Cst,stm32f4x9-fsotg
+alias:          of:N*T*Capm,apm82181-dwc-otgC*
+alias:          of:N*T*Capm,apm82181-dwc-otg
+alias:          of:N*T*Camcc,dwc-otgC*
+alias:          of:N*T*Camcc,dwc-otg
+alias:          of:N*T*Camlogic,meson-g12a-usbC*
+alias:          of:N*T*Camlogic,meson-g12a-usb
+alias:          of:N*T*Camlogic,meson-gxbb-usbC*
+alias:          of:N*T*Camlogic,meson-gxbb-usb
+alias:          of:N*T*Camlogic,meson8b-usbC*
+alias:          of:N*T*Camlogic,meson8b-usb
+alias:          of:N*T*Camlogic,meson8-usbC*
+alias:          of:N*T*Camlogic,meson8-usb
+alias:          of:N*T*Csamsung,s3c6400-hsotgC*
+alias:          of:N*T*Csamsung,s3c6400-hsotg
+alias:          of:N*T*Csnps,dwc2C*
+alias:          of:N*T*Csnps,dwc2
+alias:          of:N*T*Clantiq,xrx200-usbC*
+alias:          of:N*T*Clantiq,xrx200-usb
+alias:          of:N*T*Clantiq,arx100-usbC*
+alias:          of:N*T*Clantiq,arx100-usb
+alias:          of:N*T*Crockchip,rk3066-usbC*
+alias:          of:N*T*Crockchip,rk3066-usb
+alias:          of:N*T*Cingenic,x2000-otgC*
+alias:          of:N*T*Cingenic,x2000-otg
+alias:          of:N*T*Cingenic,x1830-otgC*
+alias:          of:N*T*Cingenic,x1830-otg
+alias:          of:N*T*Cingenic,x1700-otgC*
+alias:          of:N*T*Cingenic,x1700-otg
+alias:          of:N*T*Cingenic,x1600-otgC*
+alias:          of:N*T*Cingenic,x1600-otg
+alias:          of:N*T*Cingenic,x1000-otgC*
+alias:          of:N*T*Cingenic,x1000-otg
+alias:          of:N*T*Cingenic,jz4780-otgC*
+alias:          of:N*T*Cingenic,jz4780-otg
+alias:          of:N*T*Cingenic,jz4775-otgC*
+alias:          of:N*T*Cingenic,jz4775-otg
+alias:          of:N*T*Chisilicon,hi6220-usbC*
+alias:          of:N*T*Chisilicon,hi6220-usb
+alias:          of:N*T*Cbrcm,bcm2835-usbC*
+alias:          of:N*T*Cbrcm,bcm2835-usb
+alias:          acpi*:BCM2848:*
+depends:        roles
+intree:         Y
+name:           dwc2
+vermagic:       6.1.21-v7+ SMP mod_unload modversions ARMv7 p2v8
+
+
+three@leonardo:~/pi/hub/Flip/november $ lsmod | grep dwc2
+dwc2                  172032  0
+roles                  20480  1 dwc2
+
+three@leonardo:~/pi/hub/Flip/november $ grep CONFIG_USB_LIBCOMPOSITE /boot/config-$(uname -r)
+sudo find /lib/modules/$(uname -r) -name 'libcomposite.*'
+modinfo libcomposite
+lsmod | grep libcomposite
+grep: /boot/config-6.1.21-v7+: No such file or directory
+/lib/modules/6.1.21-v7+/kernel/drivers/usb/gadget/libcomposite.ko.xz
+filename:       /lib/modules/6.1.21-v7+/kernel/drivers/usb/gadget/libcomposite.ko.xz
+author:         David Brownell
+license:        GPL
+srcversion:     234966E067EBD2A2E21294C
+depends:
+intree:         Y
+name:           libcomposite
+vermagic:       6.1.21-v7+ SMP mod_unload modversions ARMv7 p2v8
+libcomposite           61440  14 usb_f_uvc
+
+three@leonardo:~/pi/hub/Flip/november $ cat /boot/config.txt | grep dtoverlay
+dtoverlay=vc4-fkms-v3d
+dtoverlay=dwc2,dr_mode=peripheralI have provided the results of all of the mentioned diagnostic checks you reuested
+
+three@leonardo:~/pi/hub/Flip/november $ cat /boot/cmdline.txt
+console=serial0,115200 console=tty1 root=PARTUUID=d3bdfb58-02 rootfstype=ext4 fsck.repair=yes rootwait modules-load=dwc2,libcomposite quiet plymouth.ignore-serial-consoles cfg80211.ieee80211_regdom=US video=HDMI-A-1:1024x700@60
+
+
+three@leonardo:~/pi/hub/Flip/november $ cat /etc/modules
+# /etc/modules: kernel modules to load at boot time.
+#
+# This file contains the names of kernel modules that should be loaded
+# at boot time, one per line. Lines beginning with "#" are ignored.
+
+i2c-dev
+v4l2loopback
+dwc2
+libcomposite
+dwc2
+libcomposite
+
+three@leonardo:~/pi/hub/Flip/november $ dmesg | grep -i dwc2
+[    7.183603] dwc2 3f980000.usb: supply vusb_d not found, using dummy regulator
+[    7.183894] dwc2 3f980000.usb: supply vusb_a not found, using dummy regulator
+[    7.285570] dwc2 3f980000.usb: EPs: 8, dedicated fifos, 4080 entries in SPRAM
+[   12.257891] dwc2 3f980000.usb: bound driver configfs-gadget.uvc_gadget
+
+three@leonardo:~/pi/hub/Flip/november $ dmesg | grep -i libcomposite
+three@leonardo:~/pi/hub/Flip/november $
+
+three@leonardo:~/pi/hub/Flip/november $ sudo apt install raspberrypi-kernel-headers
+Reading package lists... Done
+Building dependency tree... Done
+Reading state information... Done
+raspberrypi-kernel-headers is already the newest version (1:1.20230405-1).
+The following package was automatically installed and is no longer required:
+  libfuse2
+Use 'sudo apt autoremove' to remove it.
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+
+This concludes all of the cli diagnostic checks that you requested me to attempt in the terminal window. Lets review the results from of each of the tests and write out what new revelations we understand as a result. From there, we can proceed with what alterations in the configuration we can employ to resolve our underlying issue.
